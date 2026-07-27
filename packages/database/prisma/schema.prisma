@@ -1,0 +1,349 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Identity & Access Management ────────────────────────────────────────
+
+model User {
+  id           String     @id @default(uuid(7))
+  email        String     @unique
+  passwordHash String
+  name         String
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  memberships     Membership[]
+  refreshTokens   RefreshToken[]
+  createdProjects Project[]
+  createdApiKeys  ApiKey[]
+  auditLogs       AuditLog[]
+  triggeredBuilds Build[]
+
+  @@map("users")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model Organization {
+  id               String   @id @default(uuid(7))
+  name             String
+  slug             String   @unique
+  plan             OrgPlan  @default(FREE)
+  stripeCustomerId String?  @unique
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  memberships Membership[]
+  teams       Team[]
+  projects    Project[]
+  apiKeys     ApiKey[]
+  auditLogs   AuditLog[]
+  builds      Build[]
+
+  @@map("organizations")
+}
+
+enum OrgPlan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+model Team {
+  id             String   @id @default(uuid(7))
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships  Membership[]
+
+  @@unique([organizationId, name])
+  @@map("teams")
+}
+
+model Membership {
+  id             String   @id @default(uuid(7))
+  userId         String
+  organizationId String
+  teamId         String?
+  role           OrgRole
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team         Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@index([teamId])
+  @@map("memberships")
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  DEVELOPER
+  BILLING
+  VIEWER
+}
+
+model RefreshToken {
+  id                String    @id @default(uuid(7))
+  userId            String
+  tokenHash         String    @unique
+  family            String
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  replacedByTokenId String?
+  createdByIp       String?
+  userAgent         String?
+  createdAt         DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([family])
+  @@map("refresh_tokens")
+}
+
+model ApiKey {
+  id              String    @id @default(uuid(7))
+  organizationId  String
+  createdByUserId String
+  name            String
+  keyPrefix       String
+  keyHash         String    @unique
+  scopes          String[]
+  lastUsedAt      DateTime?
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdByUserId], references: [id])
+
+  @@index([organizationId])
+  @@map("api_keys")
+}
+
+// ── Projects ─────────────────────────────────────────────────────────────
+
+model Project {
+  id              String            @id @default(uuid(7))
+  organizationId  String
+  createdByUserId String
+  name            String
+  slug            String
+  sourceType      ProjectSourceType
+  sourceUrl       String?
+  status          ProjectStatus     @default(DRAFT)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User           @relation(fields: [createdByUserId], references: [id])
+  builds       Build[]
+  config       ProjectConfig?
+  signingKey   SigningKey?
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@map("projects")
+}
+
+// ── Project configuration (Android runtime template, v1.3) ─────────────────
+
+model ProjectConfig {
+  id                       String              @id @default(uuid(7))
+  projectId                String              @unique
+  appName                  String?
+  // No DB-level default: the application layer always derives a real,
+  // collision-resistant value from the project's org+slug when the config
+  // row is first created, rather than every project silently sharing one
+  // placeholder Android application ID.
+  packageName              String
+  versionName              String              @default("1.0.0")
+  versionCode              Int                 @default(1)
+  iconStorageKey           String?
+  splashStorageKey         String?
+  themeColor               String              @default("#4F46E5")
+  orientation              ScreenOrientation   @default(ANY)
+  statusBarStyle           StatusBarStyle      @default(DEFAULT)
+  // Hosts the generated app's WebView is allowed to navigate to, beyond the
+  // project's own source host (which is always allowed implicitly). Kept as
+  // a Postgres text array rather than a join table — this is a small,
+  // unordered set edited as a whole, not queried/joined independently.
+  allowedNavigationDomains String[]            @default([])
+  deepLinkScheme           String?
+  customUserAgent          String?
+  permissions              AndroidPermission[] @default([])
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_configs")
+}
+
+enum ScreenOrientation {
+  PORTRAIT
+  LANDSCAPE
+  ANY
+}
+
+enum StatusBarStyle {
+  DEFAULT
+  LIGHT
+  DARK
+}
+
+enum AndroidPermission {
+  CAMERA
+  LOCATION
+  MICROPHONE
+  STORAGE
+  NOTIFICATIONS
+}
+
+enum ProjectSourceType {
+  URL
+  UPLOAD
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+// ── Build Engine ─────────────────────────────────────────────────────────
+
+model Build {
+  id                String              @id @default(uuid(7))
+  projectId         String
+  organizationId    String
+  triggeredByUserId String
+  platform          BuildTargetPlatform
+  artifactType      BuildArtifactType
+  status            BuildJobStatus      @default(QUEUED)
+  errorMessage      String?
+  logStorageKey     String?
+  queuedAt          DateTime            @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  triggeredBy  User            @relation(fields: [triggeredByUserId], references: [id])
+  artifacts    BuildArtifact[]
+
+  @@index([organizationId, createdAt])
+  @@index([projectId, createdAt])
+  @@map("builds")
+}
+
+enum BuildTargetPlatform {
+  ANDROID
+  IOS
+}
+
+enum BuildArtifactType {
+  APK
+  AAB
+  IPA
+}
+
+enum BuildJobStatus {
+  QUEUED
+  IN_PROGRESS
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+model BuildArtifact {
+  id          String            @id @default(uuid(7))
+  buildId     String
+  kind        BuildArtifactKind
+  storageKey  String
+  contentType String
+  sizeBytes   BigInt
+  checksum    String?
+  createdAt   DateTime          @default(now())
+
+  build Build @relation(fields: [buildId], references: [id], onDelete: Cascade)
+
+  @@index([buildId])
+  @@map("build_artifacts")
+}
+
+enum BuildArtifactKind {
+  MANIFEST
+  ANDROID_PROJECT
+  APK
+  AAB
+  IPA
+}
+
+// ── Signing (Android APK/AAB release builds, v1.4) ──────────────────────────
+
+model SigningKey {
+  id        String   @id @default(uuid(7))
+  projectId String   @unique
+  alias     String
+  // Raw keystore bytes (a real .jks file) never touch the database or leave
+  // the API process unencrypted: AES-256-GCM'd with SIGNING_KEY_ENCRYPTION_KEY
+  // (iv + authTag + ciphertext concatenated into one blob) before being
+  // uploaded to object storage under this key. The build-worker downloads,
+  // decrypts into the isolated per-build workspace only for the duration of
+  // the Gradle signing step, and the workspace is destroyed afterward.
+  keystoreStorageKey     String
+  storePasswordEncrypted String
+  keyPasswordEncrypted   String
+  // The cert fingerprint is not secret — it's what a store listing or a
+  // "verify this update comes from the same developer" check compares
+  // against, so it's safe to return directly from the API.
+  sha256Fingerprint String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("signing_keys")
+}
+
+// ── Audit ────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id             String   @id @default(uuid(7))
+  organizationId String
+  actorUserId    String?
+  action         String
+  targetType     String
+  targetId       String?
+  metadata       Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@map("audit_logs")
+}

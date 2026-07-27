@@ -1,0 +1,19 @@
+{
+  "name": "queue",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/queue/src",
+  "projectType": "library",
+  "tags": ["scope:shared"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/packages/queue",
+        "main": "packages/queue/src/index.ts",
+        "tsConfig": "packages/queue/tsconfig.lib.json",
+        "assets": ["packages/queue/*.md"]
+      }
+    }
+  }
+}

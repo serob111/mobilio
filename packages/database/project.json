@@ -1,0 +1,56 @@
+{
+  "name": "database",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/database/src",
+  "projectType": "library",
+  "tags": ["scope:shared"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/packages/database",
+        "main": "packages/database/src/index.ts",
+        "tsConfig": "packages/database/tsconfig.lib.json",
+        "assets": ["packages/database/*.md"]
+      }
+    },
+    "prisma-generate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "prisma generate",
+        "cwd": "packages/database"
+      },
+      "outputs": ["{projectRoot}/generated"]
+    },
+    "migrate-dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "prisma migrate dev",
+        "cwd": "packages/database"
+      },
+      "dependsOn": ["prisma-generate"]
+    },
+    "migrate-deploy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "prisma migrate deploy",
+        "cwd": "packages/database"
+      }
+    },
+    "migrate-status": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "prisma migrate status",
+        "cwd": "packages/database"
+      }
+    },
+    "studio": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "prisma studio",
+        "cwd": "packages/database"
+      }
+    }
+  }
+}

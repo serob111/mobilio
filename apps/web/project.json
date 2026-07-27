@@ -1,0 +1,27 @@
+{
+  "name": "web",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/web",
+  "projectType": "application",
+  "tags": [],
+  "targets": {
+    "dev": {
+      "options": {
+        "command": "next dev --port 4200"
+      }
+    },
+    "start": {
+      "options": {
+        "command": "next start --port 4200"
+      }
+    },
+    "build": {
+      "options": {
+        "command": "next build --webpack",
+        "env": {
+          "NODE_ENV": "production"
+        }
+      }
+    }
+  }
+}
